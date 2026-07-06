@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tornado Simulator - Advanced</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #map { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 1; }
+
+        .leaflet-control-attribution { display: none !important; }
+
+        .simulator-controls {
+            position: fixed; top: 10px; left: 10px; width: 340px;
+            background: rgba(255,255,255,0.98);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-height: 92vh;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .simulator-controls::-webkit-scrollbar { width: 6px; }
+        .simulator-controls::-webkit-scrollbar-track { background: transparent; }
+        .simulator-controls::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+        .controls-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 18px 20px;
+            border-radius: 16px 16px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .controls-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .header-icon { font-size: 24px; }
+        .header-text h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.5px; }
+        .header-text span { font-size: 11px; opacity: 0.8; font-weight: 400; }
+
+        .controls-content { padding: 16px 18px; }
+
+        .risk-section { margin-bottom: 16px; }
+        .risk-level {
+            padding: 14px 16px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .risk-level.slight { 
+            background: linear-gradient(135deg, #fff8e1 0%, #fff3cd 100%); 
+            color: #856404; border-color: #ffc107;
+        }
+        .risk-level.enhanced { 
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); 
+            color: #e65100; border-color: #ff9800;
+        }
+        .risk-level.moderate { 
+            background: linear-gradient(135deg, #ff8a65 0%, #ff7043 100%); 
+            color: white; border-color: #f4511e;
+        }
+        .risk-level.high { 
+            background: linear-gradient(135deg, #ef5350 0%, #c62828 100%); 
+            color: white; border-color: #b71c1c;
+            animation: pulse-risk 2s infinite;
+        }
+        @keyframes pulse-risk {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(198,40,40,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(198,40,40,0); }
+        }
+
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 14px;
+            border: 1px solid #e9ecef;
+        }
+        .info-card-header {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6c757d;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+            font-size: 13px;
+        }
+        .info-row:not(:last-child) {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 4px;
+        }
+        .info-label { font-weight: 600; color: #495057; }
+        .info-value { color: #212529; font-weight: 500; }
+        .info-value.highlight { color: #1976d2; font-weight: 700; }
+
+        .btn-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+        .btn {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            letter-spacing: 0.3px;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { 
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(25,118,210,0.3);
+        }
+        .btn-primary:hover { 
+            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%);
+            box-shadow: 0 6px 16px rgba(25,118,210,0.4);
+        }
+        .btn-secondary { background: #e9ecef; color: #495057; }
+        .btn-secondary:hover { background: #dee2e6; color: #212529; }
+        .btn-success { 
+            background: linear-gradient(135deg, #43a047 0%, #2e7d32 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(67,160,71,0.3);
+        }
+        .btn-success:hover { 
+            background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%);
+            box-shadow: 0 6px 16px rgba(67,160,71,0.4);
+        }
+        .btn-danger { 
+            background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+            color: white;
+        }
+        .btn-danger:hover { 
+            background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%);
+        }
+
+        .checkbox-section { margin-bottom: 14px; }
+        .checkbox-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border: 1px solid #e9ecef;
+        }
+        .checkbox-item:hover { background: #e9ecef; }
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 8px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #1976d2;
+        }
+        .checkbox-item label {
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: #495057;
+            user-select: none;
+        }
+
+        .minimize-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .minimize-btn:hover { background: rgba(255,255,255,0.3); }
+
+        .close-btn {
+            position: fixed;
+            top: 10px;
+            left: 360px;
+            width: 36px;
+            height: 36px;
+            background: rgba(30,60,114,0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+        .close-btn:hover {
+            background: rgba(30,60,114,1);
+            transform: scale(1.1);
+        }
+
+        .layer-control {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+        }
+        .layer-control select {
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: #495057;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .stats-panel {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(30,60,114,0.92);
+            color: white;
+            padding: 14px 18px;
+            border-radius: 12px;
+            z-index: 1000;
+            font-size: 13px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            display: none;
+        }
+        .stats-panel .stat-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .stats-panel .stat-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.95);
+            padding: 14px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            z-index: 1000;
+            font-size: 12px;
+            display: none;
+        }
+        .legend-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; color: #212529; }
+        .legend-item { display: flex; align-items: center; margin: 4px 0; }
+        .legend-color { width: 20px; height: 10px; margin-right: 8px; border-radius: 2px; }
+
+        .stats-log {
+            position: fixed;
+            top: 10px;
+            right: 60px;
+            width: 380px;
+            max-height: 90vh;
+            background: rgba(255,255,255,0.98);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            z-index: 1000;
+            overflow-y: auto;
+            display: none;
+        }
+        .stats-log::-webkit-scrollbar { width: 6px; }
+        .stats-log::-webkit-scrollbar-track { background: transparent; }
+        .stats-log::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .stats-log-header {
+            background: linear-gradient(135deg, #ad1457 0%, #c2185b 100%);
+            color: white;
+            padding: 16px 18px;
+            border-radius: 16px 16px 0 0;
+            font-weight: 700;
+            font-size: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .stats-log-content { padding: 14px; }
+        .tornado-stat-item {
+            background: #f8f9fa;
+            border-left: 4px solid #0066ff;
+            padding: 14px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: transform 0.2s;
+        }
+        .tornado-stat-item:hover { transform: translateX(2px); }
+        .tornado-stat-item.ef0 { border-left-color: #00aaff; }
+        .tornado-stat-item.ef1 { border-left-color: #00cc44; }
+        .tornado-stat-item.ef2 { border-left-color: #ffcc00; }
+        .tornado-stat-item.ef3 { border-left-color: #ff8800; }
+        .tornado-stat-item.ef4 { border-left-color: #ff0000; }
+        .tornado-stat-item.ef5 { border-left-color: #ff00ff; }
+        .stat-title { font-weight: 700; margin-bottom: 8px; font-size: 14px; }
+        .stat-detail { margin: 4px 0; color: #495057; font-size: 12px; }
+        .stat-label { font-weight: 600; color: #666; }
+        .damage-feat {
+            background: white; padding: 5px 8px; margin: 3px 0;
+            border-radius: 4px; font-size: 11px; border-left: 2px solid #ddd;
+        }
+        .occlusion-note {
+            background: #fff3cd; border-left: 2px solid #ff8800;
+            padding: 4px 6px; margin: 2px 0; border-radius: 3px;
+            font-size: 11px; color: #856404;
+        }
+        .failed-occlusion-note {
+            background: #fff8e1; border-left: 2px solid #ffa726;
+            padding: 4px 6px; margin: 2px 0; border-radius: 3px;
+            font-size: 11px; color: #e65100; font-style: italic;
+        }
+        .curl-note {
+            background: #f3e5f5; border-left: 2px solid #9c27b0;
+            padding: 4px 6px; margin: 2px 0; border-radius: 3px;
+            font-size: 11px; color: #6a1b9a;
+        }
+        .lifecycle-note {
+            background: #e7f3ff; border-left: 2px solid #0066ff;
+            padding: 4px 6px; margin: 2px 0; border-radius: 3px;
+            font-size: 11px; color: #004085;
+        }
+        .casualty-note {
+            background: #fce4ec; border-left: 2px solid #c62828;
+            padding: 5px 8px; margin: 6px 0; border-radius: 4px;
+            font-size: 11px; color: #b71c1c; font-weight: 600;
+        }
+        .speed-note {
+            background: #e0f2f1; border-left: 2px solid #00695c;
+            padding: 4px 6px; margin: 2px 0; border-radius: 3px;
+            font-size: 11px; color: #004d40;
+        }
+        .mega-wedge-note {
+            background: #fce4ec; border-left: 3px solid #b71c1c;
+            padding: 5px 8px; margin: 4px 0; border-radius: 4px;
+            font-size: 12px; color: #b71c1c; font-weight: 700;
+        }
+        .long-track-note {
+            background: #e8f5e9; border-left: 3px solid #2e7d32;
+            padding: 5px 8px; margin: 4px 0; border-radius: 4px;
+            font-size: 12px; color: #2e7d32; font-weight: 700;
+        }
+        .outbreak-note {
+            background: linear-gradient(135deg, #ff1744 0%, #d50000 100%);
+            color: white;
+            padding: 8px 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(213,0,0,0.3);
+            animation: outbreak-pulse 1.5s infinite;
+        }
+        @keyframes outbreak-pulse {
+            0%, 100% { box-shadow: 0 4px 12px rgba(213,0,0,0.3); }
+            50% { box-shadow: 0 4px 20px rgba(213,0,0,0.6); }
+        }
+        .close-stats {
+            background: rgba(255,255,255,0.2);
+            border: none; color: white;
+            font-size: 18px; cursor: pointer;
+            width: 28px; height: 28px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .close-stats:hover { background: rgba(255,255,255,0.3); }
+
+        .scenario-transition {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .transition-text {
+            background: rgba(30,60,114,0.95);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .section-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #dee2e6, transparent);
+            margin: 14px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="scenario-transition" id="scenarioTransition">
+        <div class="transition-text">🌪️ Generating New Scenario...</div>
+    </div>
+    
+    <button class="close-btn" id="closeBtn" onclick="toggleControls()">−</button>
+    
+    <div class="simulator-controls" id="controls">
+        <div class="controls-header">
+            <div class="header-title">
+                <span class="header-icon">🌪️</span>
+                <div class="header-text">
+                    <h2>Tornado Simulator</h2>
+                    <span>Advanced Weather Modeling</span>
+                </div>
+            </div>
+            <button class="minimize-btn" onclick="toggleControls()">−</button>
+        </div>
+        
+        <div class="controls-content">
+            <div class="risk-section">
+                <div class="risk-level slight" id="riskLevel">Slight Risk</div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-card-header">📋 Scenario Information</div>
+                <div class="info-row">
+                    <span class="info-label">Date</span>
+                    <span class="info-value" id="simDate">May 17, 2026</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Time</span>
+                    <span class="info-value" id="simTime">05:30 PM</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Region</span>
+                    <span class="info-value highlight" id="simRegion">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Active</span>
+                    <span class="info-value" id="activeTornadoes">0 (Track Complete)</span>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="generateRandomScenario()">
+                    <span>⚡</span> Generate Random Scenario
+                </button>
+                <button class="btn btn-secondary" onclick="selectScenarioArea()">
+                    <span></span> Select Scenario Area
+                </button>
+                <button class="btn btn-success" onclick="toggleStatsLog()">
+                    <span></span> View Tornado Stats Log
+                </button>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="checkbox-section">
+                <div class="checkbox-section-title">Display Options</div>
+                <div class="checkbox-grid">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showWindFields" checked onchange="toggleLayers()">
+                        <label for="showWindFields">Wind Fields</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showDamage" checked onchange="toggleLayers()">
+                        <label for="showDamage">Damage</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showMesoscale" checked onchange="toggleLayers()">
+                        <label for="showMesoscale">Meso Disc.</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showHail" checked onchange="toggleLayers()">
+                        <label for="showHail">Hail Reports</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <button class="btn btn-danger" onclick="returnToMainMenu()">
+                <span>🏠</span> Return to Main Menu
+            </button>
+        </div>
+    </div>
+
+    <div class="stats-log" id="statsLog">
+        <div class="stats-log-header">
+            <span>️ Tornado Damage Log</span>
+            <button class="close-stats" onclick="toggleStatsLog()">×</button>
+        </div>
+        <div class="stats-log-content" id="statsLogContent">
+            <p style="color: #666; text-align: center; padding: 20px;">No tornadoes logged yet.<br>Generate a scenario to see stats.</p>
+        </div>
+    </div>
+    
+    <div class="layer-control">
+        <select id="mapLayer" onchange="changeMapLayer()">
+            <option value="satellite">🛰️ Satellite</option>
+            <option value="street">🗺️ Street Map</option>
+            <option value="terrain">️ Terrain</option>
+        </select>
+    </div>
+    
+    <div class="stats-panel" id="statsPanel">
+        <div class="stat-row"><span class="stat-dot"></span> Tornadoes: <strong><span id="tornadoCount">0</span></strong></div>
+        <div class="stat-row"><span class="stat-dot" style="background:#ff4444"></span> Max EF: <strong><span id="maxEF">EF0</span></strong></div>
+        <div class="stat-row"><span class="stat-dot" style="background:#ffc107"></span> Total Path: <strong><span id="totalPath">0</span> mi</strong></div>
+    </div>
+
+    <div class="legend" id="legend">
+        <div class="legend-title">EF Rating Scale</div>
+        <div class="legend-item"><div class="legend-color" style="background: #00aaff;"></div>EF0 (65-85 mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #00cc44;"></div>EF1 (86-110 mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ffcc00;"></div>EF2 (111-135 mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ff8800;"></div>EF3 (136-165 mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ff0000;"></div>EF4 (166-200 mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ff00ff;"></div>EF5 (200+ mph)</div>
+        <div class="legend-item"><div class="legend-color" style="background: #888;"></div>Occlusion</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const efDamageDatabase = {
+            0: ["Light damage to tree branches snapped","Shallow-rooted trees pushed over","Minor damage to chimneys","Branches broken off trees","Signs damaged","Minor roof damage (shingles lifted)","Gutters and awnings damaged","Outdoor furniture blown away","Small outbuildings damaged","Windows broken from flying debris","Light vehicles pushed off road","Power lines downed","Fencing damaged","Light structural damage to homes","Tree limbs on power lines"],
+            1: ["Roofs severely stripped","Mobile homes overturned or badly damaged","Exterior doors ripped off homes","Garage doors collapsed inward","Large trees snapped or uprooted","Cars pushed off roads","Sheds and barns heavily damaged","Windows shattered in buildings","Siding torn from structures","Decks and porches collapsed","Light vehicles rolled over","Power poles snapped","Farm equipment moved significant distances","Moderate structural damage to homes","Trees completely debarked on one side"],
+            2: ["Well-constructed houses lost roofs","Mobile homes completely destroyed","Boxcars overturned","Large trees snapped and uprooted","Cars lifted off ground","Barns and farm buildings destroyed","Roof structures completely removed","Foundation damage to homes","Heavy vehicles thrown","Trains derailed","Large projectiles generated (cars, trees)","Complete destruction of outbuildings","Walls collapsed on structures","Significant structural failure","Vehicles tossed 50+ feet"],
+            3: ["Entire stories of well-built homes destroyed","Severe damage to large buildings","Trains overturned","Heavy cars lifted off ground","Forests flattened over large areas","Skyscraper windows shattered","Weak structures completely leveled","Metal buildings severely damaged","Cars thrown 100+ feet","Complete roof removal on homes","Exterior walls collapsed","Large commercial buildings damaged","Power transmission towers damaged","Concrete structures cracked","Vehicles mangled beyond recognition"],
+            4: ["Well-constructed houses leveled","Structures with weak foundations blown away","Cars thrown 300+ feet","Large projectiles travel over a mile","Skyscrapers severely damaged","Metal buildings completely destroyed","Reinforced concrete structures damaged","Trees debarked completely","Ground scouring evident","Pavement ripped from roads","Heavy trucks thrown significant distances","Complete destruction of neighborhoods","Steel frame buildings heavily damaged","Foundation walls collapsed","Vehicles pulverized"],
+            5: ["Strong frame houses swept away","Structures lifted off foundations","Cars thrown over 1000 feet","Trees completely debarked","Ground stripped of vegetation","Pavement scoured clean","Reinforced concrete buildings destroyed","Steel beams bent and twisted","Incredible phenomena (grass driven into trees)","Asphalt ripped from roads","Vehicles disintegrated","Complete devastation of area","Buildings swept clean from foundations","Miraculous survival stories","Unbelievable structural damage"]
+        };
+
+        const efWindSpeeds = {
+            0: { min: 65, max: 85 }, 1: { min: 86, max: 110 },
+            2: { min: 111, max: 135 }, 3: { min: 136, max: 165 },
+            4: { min: 166, max: 200 }, 5: { min: 201, max: 234 }
+        };
+
+        const populationZones = [
+            { lat: 35.2, lon: -97.5, density: 'urban', name: 'Oklahoma City' },
+            { lat: 36.1, lon: -95.9, density: 'urban', name: 'Tulsa' },
+            { lat: 38.6, lon: -90.2, density: 'urban', name: 'St. Louis' },
+            { lat: 39.1, lon: -94.6, density: 'urban', name: 'Kansas City' },
+            { lat: 32.8, lon: -96.8, density: 'urban', name: 'Dallas' },
+            { lat: 29.8, lon: -95.4, density: 'urban', name: 'Houston' },
+            { lat: 33.5, lon: -86.8, density: 'urban', name: 'Birmingham' },
+            { lat: 36.2, lon: -86.8, density: 'urban', name: 'Nashville' },
+            { lat: 35.1, lon: -89.9, density: 'urban', name: 'Memphis' },
+            { lat: 32.3, lon: -90.2, density: 'urban', name: 'Jackson MS' },
+            { lat: 30.5, lon: -91.1, density: 'urban', name: 'Baton Rouge' },
+            { lat: 33.8, lon: -84.4, density: 'urban', name: 'Atlanta' },
+            { lat: 38.5, lon: -98.5, density: 'rural', name: 'Rural Kansas' },
+            { lat: 36.0, lon: -97.5, density: 'rural', name: 'Rural Oklahoma' },
+            { lat: 40.0, lon: -98.0, density: 'rural', name: 'Rural Nebraska' },
+            { lat: 41.5, lon: -93.5, density: 'rural', name: 'Rural Iowa' },
+            { lat: 43.0, lon: -98.5, density: 'rural', name: 'Rural South Dakota' },
+            { lat: 34.5, lon: -92.5, density: 'rural', name: 'Rural Arkansas' },
+            { lat: 32.5, lon: -92.5, density: 'rural', name: 'Rural Louisiana' },
+            { lat: 33.0, lon: -88.5, density: 'rural', name: 'Rural Mississippi' },
+            { lat: 33.5, lon: -86.0, density: 'rural', name: 'Rural Alabama' },
+            { lat: 35.5, lon: -86.5, density: 'rural', name: 'Rural Tennessee' },
+            { lat: 33.5, lon: -96.5, density: 'suburban', name: 'North Texas' }
+        ];
+
+        let map, riskPolygon = null, mesoPolygon = null, mesoCenter = null;
+        let tornadoes = [], tornadoStats = [], windFields = [], hailReports = [];
+        let mesoscaleDiscussion = null, activeScenario = false;
+        let pendingTornadoTimers = [];
+        let activeIntervals = [];
+        let currentRegion = '';
+        let isOutbreak = false;
+        
+        const efColors = { 0: '#00aaff', 1: '#00cc44', 2: '#ffcc00', 3: '#ff8800', 4: '#ff0000', 5: '#ff00ff' };
+
+        const mapLayers = {
+            satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '' }),
+            street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '' }),
+            terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: '' })
+        };
+
+        const tornadoRegions = [
+            { name: 'Central Kansas', latMin: 37.0, latMax: 40.0, lonMin: -101.0, lonMax: -96.0, alley: 'Tornado Alley' },
+            { name: 'Eastern Kansas', latMin: 37.5, latMax: 40.0, lonMin: -97.0, lonMax: -94.5, alley: 'Tornado Alley' },
+            { name: 'Central Oklahoma', latMin: 34.5, latMax: 37.0, lonMin: -99.0, lonMax: -96.5, alley: 'Tornado Alley' },
+            { name: 'Western Oklahoma', latMin: 34.5, latMax: 37.0, lonMin: -101.0, lonMax: -98.5, alley: 'Tornado Alley' },
+            { name: 'North Texas Panhandle', latMin: 33.5, latMax: 36.5, lonMin: -103.0, lonMax: -100.0, alley: 'Tornado Alley' },
+            { name: 'North-Central Texas', latMin: 32.5, latMax: 34.5, lonMin: -99.0, lonMax: -96.0, alley: 'Tornado Alley' },
+            { name: 'South-Central Nebraska', latMin: 39.5, latMax: 42.0, lonMin: -101.0, lonMax: -97.5, alley: 'Tornado Alley' },
+            { name: 'Eastern Nebraska', latMin: 40.0, latMax: 42.5, lonMin: -98.0, lonMax: -95.5, alley: 'Tornado Alley' },
+            { name: 'South Dakota Plains', latMin: 42.5, latMax: 44.5, lonMin: -101.0, lonMax: -97.0, alley: 'Tornado Alley' },
+            { name: 'Central Iowa', latMin: 41.0, latMax: 43.0, lonMin: -95.0, lonMax: -92.0, alley: 'Tornado Alley' },
+            { name: 'Western Missouri', latMin: 37.5, latMax: 40.5, lonMin: -95.5, lonMax: -93.0, alley: 'Tornado Alley' },
+            { name: 'Eastern Colorado Plains', latMin: 37.5, latMax: 41.0, lonMin: -104.5, lonMax: -102.0, alley: 'Tornado Alley' },
+            { name: 'Central Mississippi', latMin: 31.5, latMax: 34.0, lonMin: -91.0, lonMax: -88.5, alley: 'Dixie Alley' },
+            { name: 'Northern Mississippi', latMin: 33.5, latMax: 35.5, lonMin: -90.0, lonMax: -88.0, alley: 'Dixie Alley' },
+            { name: 'Central Alabama', latMin: 32.0, latMax: 34.0, lonMin: -88.0, lonMax: -85.5, alley: 'Dixie Alley' },
+            { name: 'Northern Alabama', latMin: 33.5, latMax: 35.5, lonMin: -88.5, lonMax: -85.5, alley: 'Dixie Alley' },
+            { name: 'Middle Tennessee', latMin: 35.0, latMax: 37.0, lonMin: -88.0, lonMax: -85.5, alley: 'Dixie Alley' },
+            { name: 'Western Tennessee', latMin: 34.5, latMax: 36.5, lonMin: -90.5, lonMax: -88.0, alley: 'Dixie Alley' },
+            { name: 'Southern Arkansas', latMin: 32.5, latMax: 34.5, lonMin: -94.5, lonMax: -91.5, alley: 'Dixie Alley' },
+            { name: 'Central Arkansas', latMin: 34.0, latMax: 36.0, lonMin: -94.0, lonMax: -91.0, alley: 'Dixie Alley' },
+            { name: 'Northern Louisiana', latMin: 31.5, latMax: 33.5, lonMin: -94.0, lonMax: -91.0, alley: 'Dixie Alley' },
+            { name: 'Western Georgia', latMin: 32.0, latMax: 34.5, lonMin: -86.0, lonMax: -83.5, alley: 'Dixie Alley' },
+            { name: 'Northern Georgia', latMin: 34.0, latMax: 35.5, lonMin: -85.5, lonMax: -83.0, alley: 'Dixie Alley' },
+            { name: 'Eastern Oklahoma', latMin: 34.0, latMax: 36.5, lonMin: -96.0, lonMax: -94.5, alley: 'Dixie Alley' }
+        ];
+
+        function initMap() {
+            map = L.map('map', { center: [36.0, -95.0], zoom: 6, layers: [mapLayers.satellite] });
+            L.control.scale().addTo(map);
+        }
+
+        function chaikinSmooth(points, iterations = 3) {
+            if (points.length < 3) return points;
+            let current = points.slice();
+            for (let iter = 0; iter < iterations; iter++) {
+                const smoothed = [];
+                for (let i = 0; i < current.length - 1; i++) {
+                    const p0 = current[i];
+                    const p1 = current[i + 1];
+                    smoothed.push([0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]]);
+                    smoothed.push([0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]]);
+                }
+                current = smoothed;
+            }
+            return current;
+        }
+
+        function smoothArray(arr, windowSize = 5) {
+            const smoothed = [];
+            for (let i = 0; i < arr.length; i++) {
+                let sum = 0, count = 0;
+                for (let j = -windowSize; j <= windowSize; j++) {
+                    const idx = i + j;
+                    if (idx >= 0 && idx < arr.length) { sum += arr[idx]; count++; }
+                }
+                smoothed.push(sum / count);
+            }
+            return smoothed;
+        }
+
+        function clearScenario() {
+            if (typeof areaSelectionHandler !== 'undefined' && areaSelectionHandler) { map.off('click', areaSelectionHandler); areaSelectionHandler = null; }
+            if (typeof areaSelectionFirstMarker !== 'undefined' && areaSelectionFirstMarker) { try { map.removeLayer(areaSelectionFirstMarker); } catch(e) {} areaSelectionFirstMarker = null; }
+            pendingTornadoTimers.forEach(t => clearTimeout(t));
+            pendingTornadoTimers = [];
+            activeIntervals.forEach(intervalId => clearInterval(intervalId));
+            activeIntervals = [];
+            if (riskPolygon) { map.removeLayer(riskPolygon); riskPolygon = null; }
+            if (mesoPolygon) { map.removeLayer(mesoPolygon); mesoPolygon = null; }
+            mesoCenter = null;
+            tornadoes.forEach(t => {
+                if (t.marker) { try { map.removeLayer(t.marker); } catch(e) {} }
+                if (t.damageSwaths) { t.damageSwaths.forEach(s => { try { map.removeLayer(s); } catch(e) {} }); }
+                if (t.currentSwaths) { t.currentSwaths.forEach(s => { try { map.removeLayer(s); } catch(e) {} }); }
+            });
+            tornadoes = []; tornadoStats = [];
+            windFields.forEach(w => { try { map.removeLayer(w); } catch(e) {} }); windFields = [];
+            hailReports.forEach(h => { try { map.removeLayer(h); } catch(e) {} }); hailReports = [];
+            if (mesoscaleDiscussion) { try { map.removeLayer(mesoscaleDiscussion); } catch(e) {} mesoscaleDiscussion = null; }
+            activeScenario = false; isOutbreak = false; currentRegion = '';
+            document.getElementById('simRegion').textContent = '—';
+            updateStats(); updateStatsLog();
+        }
+
+        function generateRandomScenario() {
+            try {
+                const transition = document.getElementById('scenarioTransition');
+                transition.style.display = 'flex';
+                clearScenario();
+                
+                setTimeout(() => {
+                    transition.style.display = 'none';
+                    activeScenario = true;
+                    document.getElementById('legend').style.display = 'block';
+                    document.getElementById('statsPanel').style.display = 'block';
+                    
+                    const region = tornadoRegions[Math.floor(Math.random() * tornadoRegions.length)];
+                    currentRegion = region.name;
+                    document.getElementById('simRegion').textContent = region.name + ' (' + region.alley + ')';
+                    
+                    const center = {
+                        lat: region.latMin + Math.random() * (region.latMax - region.latMin),
+                        lon: region.lonMin + Math.random() * (region.lonMax - region.lonMin)
+                    };
+                    
+                    const riskLevel = ['Slight', 'Enhanced', 'Moderate', 'High'][Math.floor(Math.random() * 4)];
+                    isOutbreak = Math.random() < 0.03;
+                    
+                    createRiskAndMesoZones(center, riskLevel);
+                    updateRiskLevel(riskLevel);
+                    
+                    const numTornadoes = isOutbreak ? (7 + Math.floor(Math.random() * 9)) : (Math.floor(Math.random() * 3) + 1);
+                    
+                    // NEW: Random spawn intervals between 5 and 20 seconds
+                    let currentDelay = 1000 + Math.random() * 2000; // First tornado spawns 1-3s after generation
+                    
+                    for (let i = 0; i < numTornadoes; i++) {
+                        const timer = setTimeout(() => {
+                            try { generateTornado(riskLevel); } catch (e) { console.error(e); }
+                        }, currentDelay);
+                        pendingTornadoTimers.push(timer);
+                        
+                        // Add random gap for the NEXT tornado (5000ms to 20000ms)
+                        currentDelay += 5000 + Math.random() * 15000;
+                    }
+                }, 400);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('scenarioTransition').style.display = 'none';
+                alert('Error: ' + e.message);
+            }
+        }
+
+        function createRiskAndMesoZones(center, riskLevel) {
+            const riskRadius = 0.5 + Math.random() * 0.4;
+            const riskPoints = [];
+            for (let i = 0; i < 10; i++) {
+                const angle = (i / 10) * 2 * Math.PI;
+                riskPoints.push([center.lat + riskRadius * Math.cos(angle) * (0.85 + Math.random() * 0.3), center.lon + riskRadius * Math.sin(angle) * (0.85 + Math.random() * 0.3)]);
+            }
+            riskPolygon = L.polygon(riskPoints, { color: '#ff0000', weight: 3, dashArray: '10, 10', fillColor: '#ff4444', fillOpacity: 0.08 }).addTo(map);
+            
+            const mesoRadius = riskRadius * 0.4;
+            mesoCenter = { lat: center.lat + (Math.random() - 0.5) * 0.08, lon: center.lon + (Math.random() - 0.5) * 0.08 };
+            const mesoPoints = [];
+            for (let i = 0; i < 10; i++) {
+                const angle = (i / 10) * 2 * Math.PI;
+                mesoPoints.push([mesoCenter.lat + mesoRadius * Math.cos(angle) * (0.85 + Math.random() * 0.3), mesoCenter.lon + mesoRadius * Math.sin(angle) * (0.85 + Math.random() * 0.3)]);
+            }
+            mesoPolygon = L.polygon(mesoPoints, { color: '#0066ff', weight: 2, dashArray: '6, 6', fillColor: '#0066ff', fillOpacity: 0.12 }).addTo(map);
+            
+            map.fitBounds(riskPolygon.getBounds(), { padding: [50, 50] });
+            if (document.getElementById('showMesoscale').checked) addMesoscaleDiscussion(mesoCenter);
+        }
+
+        function getRandomPointInMeso() {
+            if (!mesoPolygon || !mesoCenter) throw new Error('Meso zone not initialized');
+            const bounds = mesoPolygon.getBounds();
+            const latRange = bounds.getNorth() - bounds.getSouth();
+            const lonRange = bounds.getEast() - bounds.getWest();
+            return { lat: mesoCenter.lat + (Math.random() - 0.5) * latRange * 0.6, lon: mesoCenter.lon + (Math.random() - 0.5) * lonRange * 0.6 };
+        }
+
+        function generateLeafShapedPath(startLat, startLon, pathLength) {
+            const waypoints = [];
+            const numWaypoints = 150;
+            const baseDirection = -Math.PI / 4 + (Math.random() - 0.5) * 0.6;
+            const patternRoll = Math.random();
+            let pattern, turnCount, turnIntensity;
+            if (patternRoll < 0.25) { pattern = 'straight_wobble'; turnCount = 0; turnIntensity = 0; }
+            else if (patternRoll < 0.45) { pattern = 'single_right'; turnCount = 1; turnIntensity = 0.3 + Math.random() * 0.4; }
+            else if (patternRoll < 0.60) { pattern = 'single_left'; turnCount = 1; turnIntensity = 0.3 + Math.random() * 0.4; }
+            else if (patternRoll < 0.75) { pattern = 'double_turn'; turnCount = 2; turnIntensity = 0.25 + Math.random() * 0.35; }
+            else if (patternRoll < 0.85) { pattern = 's_curve'; turnCount = 2; turnIntensity = 0.3 + Math.random() * 0.3; }
+            else if (patternRoll < 0.93) { pattern = 'triple_weave'; turnCount = 3; turnIntensity = 0.2 + Math.random() * 0.3; }
+            else { pattern = 'erratic'; turnCount = 4 + Math.floor(Math.random() * 3); turnIntensity = 0.15 + Math.random() * 0.25; }
+            
+            const turns = [];
+            for (let i = 0; i < turnCount; i++) {
+                turns.push({ position: 0.15 + (i / turnCount) * 0.65 + Math.random() * 0.1, direction: (Math.random() > 0.5 ? 1 : -1) * turnIntensity, width: 0.1 + Math.random() * 0.15 });
+            }
+            const hasCurlOcclusion = Math.random() > 0.3;
+            const curlStart = 0.78 + Math.random() * 0.1;
+            const curlIntensity = 0.4 + Math.random() * 0.5;
+            const curlDirection = Math.random() > 0.5 ? 1 : -1;
+            
+            let currentLat = startLat, currentLon = startLon;
+            waypoints.push([currentLat, currentLon]);
+            
+            for (let i = 1; i <= numWaypoints; i++) {
+                const t = i / numWaypoints;
+                let currentDirection = baseDirection;
+                turns.forEach(turn => {
+                    const dist = Math.abs(t - turn.position);
+                    if (dist < turn.width) currentDirection += Math.cos((dist / turn.width) * Math.PI / 2) * turn.direction;
+                });
+                if (pattern === 'erratic') currentDirection += Math.sin(i * 0.3) * 0.015 + (Math.random() - 0.5) * 0.008;
+                if (hasCurlOcclusion && t > curlStart) currentDirection += curlDirection * ((t - curlStart) / (1 - curlStart)) * curlIntensity * Math.PI * 1.5;
+                currentDirection += Math.sin(i * 0.15) * 0.008 + Math.sin(i * 0.07) * 0.005 + (Math.random() - 0.5) * 0.002;
+                const segmentLength = pathLength / numWaypoints;
+                const distance = segmentLength / 69;
+                currentLat += distance * Math.cos(currentDirection);
+                currentLon += (distance / Math.cos(currentLat * Math.PI / 180)) * Math.sin(currentDirection);
+                waypoints.push([currentLat, currentLon]);
+            }
+            return { waypoints, hasCurlOcclusion, curlStart, pattern };
+        }
+
+        function generateOcclusions(numPoints) {
+            const occlusions = [];
+            if (Math.random() > 0.7) {
+                const numOcclusions = 1 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < numOcclusions; i++) {
+                    const startIdx = 10 + Math.floor(Math.random() * (numPoints - 30));
+                    occlusions.push({ start: startIdx, end: Math.min(startIdx + 3 + Math.floor(Math.random() * 7), numPoints - 1) });
+                }
+            }
+            return occlusions;
+        }
+
+        function generateLifecycle(numPoints, baseEF) {
+            if (Math.random() > 0.6 && baseEF >= 2) {
+                const dipStart = 0.3 + Math.random() * 0.2;
+                return { hasLifecycle: true, dipStart: Math.floor(dipStart * numPoints), dipEnd: Math.floor((dipStart + 0.15 + Math.random() * 0.15) * numPoints), dipDepth: 1 + Math.floor(Math.random() * 2) };
+            }
+            return { hasLifecycle: false };
+        }
+
+        function generatePathProfile(numPoints, baseEF, occlusions, lifecycle) {
+            const widthProfile = [], localEF = [], isOccluded = new Array(numPoints).fill(false);
+            const failedOcclusions = [];
+            occlusions.forEach(occ => { for (let i = occ.start; i < occ.end; i++) isOccluded[i] = true; });
+            
+            for (let i = 0; i < numPoints; i++) {
+                const t = i / numPoints;
+                widthProfile.push(Math.sin(t * Math.PI) * (0.85 + Math.random() * 0.3));
+                if (isOccluded[i]) {
+                    if (Math.random() > 0.75 && baseEF >= 2) {
+                        localEF.push(Math.min(baseEF, baseEF - 1));
+                        if (!failedOcclusions.find(f => Math.abs(f.point - i) < 3)) failedOcclusions.push({ point: i, ef: Math.min(baseEF, baseEF - 1) });
+                    } else localEF.push(1);
+                } else if (lifecycle.hasLifecycle && i >= lifecycle.dipStart && i < lifecycle.dipEnd) {
+                    localEF.push(Math.max(0, baseEF - lifecycle.dipDepth));
+                } else if (t > 0.75 && baseEF > 1) {
+                    localEF.push(Math.max(1, Math.round(baseEF - (baseEF - 1) * ((t - 0.75) / 0.25))));
+                } else {
+                    let ef = baseEF;
+                    if (baseEF < 5 && Math.sin(i * 0.8) * 0.5 + Math.sin(i * 2.3) * 0.3 + (Math.random() - 0.5) * 0.4 > 0.6) ef = baseEF + 1;
+                    localEF.push(ef);
+                }
+            }
+            return { widthProfile: smoothArray(widthProfile, 4), localEF, isOccluded, failedOcclusions };
+        }
+
+        function calculateSmoothedNormals(path, windowSize = 6) {
+            const normals = [];
+            for (let i = 0; i < path.length; i++) {
+                let sumDx = 0, sumDy = 0, count = 0;
+                for (let j = -windowSize; j <= windowSize; j++) {
+                    const idx = i + j;
+                    if (idx >= 0 && idx < path.length - 1) { sumDx += path[idx + 1][1] - path[idx][1]; sumDy += path[idx + 1][0] - path[idx][0]; count++; }
+                }
+                const normalAngle = Math.atan2(sumDx / count, sumDy / count) + Math.PI / 2;
+                normals.push({ cos: Math.cos(normalAngle), sin: Math.sin(normalAngle) });
+            }
+            return normals;
+        }
+
+        function estimatePopulationDensity(lat, lon) {
+            let closestZone = populationZones[0], minDistance = Infinity;
+            populationZones.forEach(zone => {
+                const distance = Math.sqrt(Math.pow(lat - zone.lat, 2) + Math.pow(lon - zone.lon, 2));
+                if (distance < minDistance) { minDistance = distance; closestZone = zone; }
+            });
+            if (minDistance < 0.1) return { density: 'urban', name: closestZone.name };
+            if (minDistance < 0.3) return { density: 'suburban', name: closestZone.name + ' suburbs' };
+            return { density: 'rural', name: 'Rural area' };
+        }
+
+        function generateTornadoTime() { return { hour: Math.floor(14 + Math.random() * 8), minute: Math.floor(Math.random() * 60) }; }
+        function formatTime(hour, minute) {
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            return `${hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour)}:${minute.toString().padStart(2, '0')} ${ampm}`;
+        }
+
+        function calculateCasualties(ef, pathLength, maxWidth, populationDensity, hour) {
+            const fatalityRates = { 0: 0.0003, 1: 0.003, 2: 0.015, 3: 0.08, 4: 0.3, 5: 1.2 };
+            const injuryRates = { 0: 0.01, 1: 0.08, 2: 0.5, 3: 2.0, 4: 6.0, 5: 20.0 };
+            const popMultiplier = { rural: 0.3, suburban: 1.0, urban: 3.0 };
+            const isNight = hour >= 22 || hour < 6;
+            let fatalities = fatalityRates[ef] * pathLength * popMultiplier[populationDensity] * (isNight ? 2.0 : 1.0);
+            let injuries = injuryRates[ef] * pathLength * popMultiplier[populationDensity] * (isNight ? 2.0 : 1.0);
+            return { fatalities: Math.max(0, Math.round(fatalities * (0.6 + Math.random() * 0.8))), injuries: Math.max(0, Math.round(injuries * (0.6 + Math.random() * 0.8))), isNight };
+        }
+
+        function generateDamageFeats(efRating) {
+            const feats = [], available = [...efDamageDatabase[efRating]];
+            for (let i = 0; i < 3 + Math.floor(Math.random() * 4) && available.length > 0; i++) feats.push(available.splice(Math.floor(Math.random() * available.length), 1)[0]);
+            return feats;
+        }
+
+        function generateMaxWindSpeed(efRating) { const r = efWindSpeeds[efRating]; return r.min + Math.floor(Math.random() * (r.max - r.min)); }
+        function generateMovementSpeed() {
+            const rand = Math.random();
+            if (rand < 0.1) return Math.round(10 + Math.random() * 10);
+            if (rand < 0.7) return Math.round(25 + Math.random() * 15);
+            if (rand < 0.95) return Math.round(40 + Math.random() * 15);
+            return Math.round(55 + Math.random() * 15);
+        }
+
+        function calculateBaseEF(riskLevel) {
+            const rand = Math.random();
+            switch(riskLevel) {
+                case 'Slight': if (rand > 0.98) return 4; if (rand > 0.93) return 3; if (rand > 0.80) return 2; if (rand > 0.50) return 1; return 0;
+                case 'Enhanced': if (rand > 0.997) return 5; if (rand > 0.97) return 4; if (rand > 0.88) return 3; if (rand > 0.65) return 2; if (rand > 0.35) return 1; return 0;
+                case 'Moderate': if (rand > 0.995) return 5; if (rand > 0.95) return 4; if (rand > 0.80) return 3; if (rand > 0.55) return 2; if (rand > 0.25) return 1; return 0;
+                case 'High': if (rand > 0.99) return 5; if (rand > 0.92) return 4; if (rand > 0.75) return 3; if (rand > 0.50) return 2; if (rand > 0.20) return 1; return 0;
+                default: return 0;
+            }
+        }
+
+        function generateTornado(riskLevel) {
+            try {
+                const spawnPoint = getRandomPointInMeso();
+                const baseEF = calculateBaseEF(riskLevel);
+                const isLongTracked = Math.random() < 0.015;
+                let pathLength;
+                if (isLongTracked) pathLength = 35 + Math.random() * 95;
+                else if (baseEF === 5) pathLength = 1 + Math.random() * 2;
+                else pathLength = 3 + Math.random() * 12;
+                
+                const { waypoints: path, hasCurlOcclusion, curlStart, pattern } = generateLeafShapedPath(spawnPoint.lat, spawnPoint.lon, pathLength);
+                const occlusions = generateOcclusions(path.length);
+                const lifecycle = generateLifecycle(path.length, baseEF);
+                const { widthProfile, localEF, isOccluded, failedOcclusions } = generatePathProfile(path.length, baseEF, occlusions, lifecycle);
+                
+                const isMegaWedge = Math.random() < 0.005;
+                const widthMultiplier = isMegaWedge ? (1.5 + Math.random() * 1.5) : 1.0;
+                const nonOccludedEF = localEF.filter((ef, i) => !isOccluded[i]);
+                const actualMaxEF = nonOccludedEF.length > 0 ? Math.max(...nonOccludedEF) : 1;
+                const maxWindSpeed = generateMaxWindSpeed(actualMaxEF);
+                const damageFeats = generateDamageFeats(actualMaxEF);
+                const movementSpeed = generateMovementSpeed();
+                const maxWidth = Math.max(...widthProfile) * 0.004 * 111000 * widthMultiplier;
+                
+                const midPoint = path[Math.floor(path.length / 2)];
+                const popInfo = estimatePopulationDensity(midPoint[0], midPoint[1]);
+                const tornadoTime = generateTornadoTime();
+                const casualties = calculateCasualties(actualMaxEF, pathLength, maxWidth, popInfo.density, tornadoTime.hour);
+                
+                const tornado = {
+                    id: Date.now() + Math.random(), path, baseEF, localEF, isOccluded,
+                    currentPos: 0, speed: 0.002 + Math.random() * 0.003,
+                    widthProfile, pathLength, actualMaxEF, maxWindSpeed, movementSpeed,
+                    damageFeats, maxWidth, occlusions, lifecycle,
+                    populationDensity: popInfo.density, locationName: popInfo.name,
+                    fatalities: casualties.fatalities, injuries: casualties.injuries,
+                    isNight: casualties.isNight, tornadoHour: tornadoTime.hour,
+                    tornadoMinute: tornadoTime.minute, startTime: new Date(),
+                    hasCurlOcclusion, failedOcclusions, isLongTracked, isMegaWedge,
+                    widthMultiplier, pattern, region: currentRegion, animationInterval: null
+                };
+                
+                tornadoes.push(tornado);
+                addTornadoToStats(tornado);
+                
+                const marker = L.circleMarker([spawnPoint.lat, spawnPoint.lon], { radius: 5, fillColor: efColors[baseEF], color: '#fff', weight: 2, opacity: 1, fillOpacity: 1 }).addTo(map);
+                
+                let popupExtra = '';
+                if (isOutbreak) popupExtra += `<br><b>🚨 OUTBREAK TORNADO</b>`;
+                if (isLongTracked) popupExtra += `<br><b> LONG TRACKED:</b> ${pathLength.toFixed(1)} mi path!`;
+                if (isMegaWedge) popupExtra += `<br><b>💎 MEGA WEDGE:</b> ${(widthMultiplier).toFixed(1)}x normal width!`;
+                if (occlusions.length > 0) popupExtra += `<br><b>Occlusions:</b> ${occlusions.length} gap(s) (left side)`;
+                if (lifecycle.hasLifecycle) popupExtra += `<br><b>Lifecycle:</b> Weakened then re-intensified`;
+                if (hasCurlOcclusion) popupExtra += `<br><b>Curl Occlusion:</b> Spiral decay at end`;
+                if (failedOcclusions.length > 0) popupExtra += `<br><b>Failed Occlusions:</b> ${failedOcclusions.length}`;
+                
+                marker.bindPopup(`<b>Tornado #${tornadoStats.length}</b><br><b>Time:</b> ${formatTime(tornadoTime.hour, tornadoTime.minute)}${casualties.isNight ? ' ⚠️ NIGHT' : ''}<br><b>Base:</b> EF${baseEF} (peaked EF${actualMaxEF})<br><b>Path Length:</b> ${pathLength.toFixed(1)} mi<br><b>Max Width:</b> ${maxWidth.toFixed(0)} m (${(maxWidth/1609).toFixed(2)} mi)<br><b>Max Wind Speed:</b> ${maxWindSpeed} mph<br><b>Forward Speed:</b> ${movementSpeed} mph<br><b>Location:</b> ${popInfo.name} (${popInfo.density})<br><b>Fatalities:</b> ${casualties.fatalities} | <b>Injuries:</b> ${casualties.injuries}<br>${popupExtra}<hr><b>Damage Report:</b><br>${damageFeats.map(f => `• ${f}`).join('<br>')}`);
+                tornado.marker = marker;
+                
+                // Always create these layers so later re-checking a box actually brings them back;
+                // visibility (not existence) is what the checkbox controls.
+                const windLayer = addWindField([spawnPoint.lat, spawnPoint.lon], baseEF);
+                setLayersVisible([windLayer], document.getElementById('showWindFields').checked);
+                if (Math.random() > 0.5) {
+                    const hailLayer = addHailReport([spawnPoint.lat, spawnPoint.lon]);
+                    setLayersVisible([hailLayer], document.getElementById('showHail').checked);
+                }
+                
+                animateTornado(tornado);
+                updateStats();
+            } catch (e) { console.error(e); }
+        }
+
+        function addTornadoToStats(tornado) {
+            tornadoStats.push({
+                id: tornadoStats.length + 1, ef: tornado.actualMaxEF, pathLength: tornado.pathLength, maxWidth: tornado.maxWidth,
+                maxWindSpeed: tornado.maxWindSpeed, movementSpeed: tornado.movementSpeed, damageFeats: tornado.damageFeats,
+                time: tornado.startTime.toLocaleTimeString(), tornadoTime: formatTime(tornado.tornadoHour, tornado.tornadoMinute),
+                isNight: tornado.isNight, occlusions: tornado.occlusions, lifecycle: tornado.lifecycle,
+                populationDensity: tornado.populationDensity, locationName: tornado.locationName,
+                fatalities: tornado.fatalities, injuries: tornado.injuries, hasCurlOcclusion: tornado.hasCurlOcclusion,
+                failedOcclusions: tornado.failedOcclusions, isLongTracked: tornado.isLongTracked, isMegaWedge: tornado.isMegaWedge,
+                widthMultiplier: tornado.widthMultiplier, pattern: tornado.pattern, region: tornado.region, isOutbreak: isOutbreak
+            });
+            updateStatsLog();
+        }
+
+        function updateStatsLog() {
+            const content = document.getElementById('statsLogContent');
+            if (tornadoStats.length === 0) { content.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No tornadoes logged yet.<br>Generate a scenario to see stats.</p>'; return; }
+            let html = '';
+            if (isOutbreak && tornadoStats.length > 0) html += `<div class="outbreak-note">🚨 TORNADO OUTBREAK: ${tornadoStats.length} tornadoes confirmed!</div>`;
+            tornadoStats.forEach(stat => {
+                let notes = '';
+                if (stat.isLongTracked) notes += `<div class="long-track-note">🌟 LONG TRACKED: ${stat.pathLength.toFixed(1)} mile path!</div>`;
+                if (stat.isMegaWedge) notes += `<div class="mega-wedge-note">💎 MEGA WEDGE: ${(stat.maxWidth/1609).toFixed(2)} miles wide!</div>`;
+                if (stat.hasCurlOcclusion) notes += `<div class="curl-note">🌀 Curl occlusion at end (spiral decay)</div>`;
+                if (stat.failedOcclusions && stat.failedOcclusions.length > 0) notes += `<div class="failed-occlusion-note">⚡ ${stat.failedOcclusions.length} failed occlusion(s)</div>`;
+                if (stat.lifecycle.hasLifecycle) notes += `<div class="lifecycle-note">⚡ Weakened then re-intensified (dropped ${stat.lifecycle.dipDepth} EF levels)</div>`;
+                if (stat.occlusions.length > 0) { notes += `<div style="margin-top:6px;"><b>Occlusions (left):</b> ${stat.occlusions.length} gap(s)</div>`; stat.occlusions.forEach(o => { notes += `<div class="occlusion-note">Gap from point ${o.start} to ${o.end}</div>`; }); }
+                notes += `<div class="speed-note"><b>Pattern:</b> ${stat.pattern.replace('_', ' ')} | <b>Region:</b> ${stat.region}</div>`;
+                html += `<div class="tornado-stat-item ef${stat.ef}"><div class="stat-title">️ Tornado #${stat.id} - EF${stat.ef}</div><div class="stat-detail"><span class="stat-label">Time:</span> ${stat.tornadoTime} (${stat.isNight ? '️ Night' : '☀️ Day'})</div><div class="stat-detail"><span class="stat-label">Location:</span> ${stat.locationName} (${stat.populationDensity})</div><div class="stat-detail"><span class="stat-label">Path Length:</span> ${stat.pathLength.toFixed(1)} mi</div><div class="stat-detail"><span class="stat-label">Max Width:</span> ${stat.maxWidth.toFixed(0)} m (${(stat.maxWidth/1609).toFixed(2)} mi)</div><div class="stat-detail"><span class="stat-label">Max Wind Speed:</span> ${stat.maxWindSpeed} mph</div><div class="speed-note"><b>Forward Speed:</b> ${stat.movementSpeed} mph</div><div class="casualty-note"><b>Fatalities:</b> ${stat.fatalities} | <b>Injuries:</b> ${stat.injuries}</div>${notes}<div style="margin-top:8px;"><b>Damage Feats:</b></div>${stat.damageFeats.map(f => `<div class="damage-feat">${f}</div>`).join('')}</div>`;
+            });
+            content.innerHTML = html;
+        }
+
+        function toggleStatsLog() { const log = document.getElementById('statsLog'); log.style.display = log.style.display === 'none' || log.style.display === '' ? 'block' : 'none'; }
+
+        function createLayeredDamageSwath(path, widthProfile, localEF, maxEF, isOccluded, widthMultiplier = 1.0) {
+            const swaths = [], colors = ['#00aaff', '#00cc44', '#ffcc00', '#ff8800', '#ff0000', '#ff00ff'];
+            const smoothedNormals = calculateSmoothedNormals(path, 6);
+            for (let efLevel = 0; efLevel <= maxEF; efLevel++) {
+                const leftEdge = [], rightEdge = [];
+                const widthFactor = Math.pow(0.55, efLevel);
+                const baseWidth = 0.004 * widthMultiplier;
+                for (let i = 0; i < path.length; i++) {
+                    if (localEF[i] < efLevel) continue;
+                    const [lat, lon] = path[i];
+                    const width = baseWidth * widthProfile[i] * widthFactor;
+                    const normal = smoothedNormals[i];
+                    if (isOccluded[i]) { leftEdge.push([lat, lon]); rightEdge.unshift([lat - width * normal.cos, lon - width * normal.sin]); }
+                    else { leftEdge.push([lat + width * normal.cos, lon + width * normal.sin]); rightEdge.unshift([lat - width * normal.cos, lon - width * normal.sin]); }
+                }
+                if (leftEdge.length < 2) continue;
+                swaths.push(L.polygon([...chaikinSmooth(leftEdge, 2), ...chaikinSmooth(rightEdge, 2)], { color: colors[efLevel], weight: 1, fillColor: colors[efLevel], fillOpacity: 0.55, opacity: 0.75, smoothFactor: 2 }));
+            }
+            if (isOccluded.some(x => x)) {
+                let inOcclusion = false, occlusionStart = null; const segments = [];
+                for (let i = 0; i < path.length; i++) {
+                    if (isOccluded[i] && !inOcclusion) { inOcclusion = true; occlusionStart = path[i]; }
+                    else if (!isOccluded[i] && inOcclusion && occlusionStart) { inOcclusion = false; segments.push([occlusionStart, path[i]]); occlusionStart = null; }
+                }
+                if (inOcclusion && occlusionStart) segments.push([occlusionStart, path[path.length - 1]]);
+                segments.forEach(seg => { swaths.push(L.polyline(seg, { color: '#888', weight: 2, opacity: 0.7, dashArray: '6, 6', smoothFactor: 2 })); });
+            }
+            return swaths;
+        }
+
+        function animateTornado(tornado) {
+            let progress = 0;
+            let lastPathIndex = -1;
+            const interval = setInterval(() => {
+                progress += tornado.speed;
+                if (progress >= 1) {
+                    clearInterval(interval);
+                    const idx = activeIntervals.indexOf(interval);
+                    if (idx !== -1) activeIntervals.splice(idx, 1);
+                    tornado.currentPos = 1;
+                    tornado.marker.setStyle({ fillColor: '#666', opacity: 0.4 });
+                    // Remove the in-progress swath before drawing the final one, or they'll double up permanently
+                    if (tornado.currentSwaths) { tornado.currentSwaths.forEach(s => { try { map.removeLayer(s); } catch(e) {} }); tornado.currentSwaths = null; }
+                    const finalSwaths = createLayeredDamageSwath(tornado.path, tornado.widthProfile, tornado.localEF, tornado.actualMaxEF, tornado.isOccluded, tornado.widthMultiplier);
+                    setLayersVisible(finalSwaths, document.getElementById('showDamage').checked);
+                    finalSwaths.forEach(s => s.addTo(map));
+                    tornado.damageSwaths = finalSwaths; // actually keep the reference so clearScenario can remove these later
+                    updateActiveTornadoes(); return;
+                }
+                const pathIndex = Math.min(Math.floor(progress * (tornado.path.length - 1)), tornado.path.length - 1);
+                tornado.marker.setLatLng(tornado.path[pathIndex]);
+                // Skip the (expensive) polygon rebuild when we haven't actually advanced to a new path point yet
+                if (pathIndex !== lastPathIndex) {
+                    lastPathIndex = pathIndex;
+                    if (tornado.currentSwaths) tornado.currentSwaths.forEach(s => { try { map.removeLayer(s); } catch(e) {} });
+                    tornado.currentSwaths = createLayeredDamageSwath(tornado.path.slice(0, pathIndex + 1), tornado.widthProfile.slice(0, pathIndex + 1), tornado.localEF.slice(0, pathIndex + 1), tornado.actualMaxEF, tornado.isOccluded.slice(0, pathIndex + 1), tornado.widthMultiplier);
+                    setLayersVisible(tornado.currentSwaths, document.getElementById('showDamage').checked);
+                    tornado.currentSwaths.forEach(s => s.addTo(map));
+                }
+                tornado.currentPos = progress;
+            }, 100);
+            tornado.animationInterval = interval; activeIntervals.push(interval);
+        }
+
+        function addWindField(position, efRating) {
+            const layer = L.circle(position, { radius: (efRating + 1) * 0.008 * 111000, color: efColors[Math.min(efRating, 5)], fillColor: efColors[Math.min(efRating, 5)], fillOpacity: 0.06, weight: 1, dashArray: '4, 4' }).addTo(map);
+            windFields.push(layer);
+            return layer;
+        }
+
+        function addHailReport(position) {
+            const marker = L.circleMarker(position, { radius: 5, fillColor: '#00ff00', color: '#fff', weight: 1, fillOpacity: 0.8 }).addTo(map);
+            marker.bindPopup(`<b>Hail Report</b><br>Size: ${['0.5', '1.0', '1.5', '2.0', '2.5+'][Math.floor(Math.random() * 5)]}"`);
+            hailReports.push(marker);
+            return marker;
+        }
+
+        // Toggle a path layer's visibility in place, instead of destroying/recreating it, so checkbox
+        // state is respected consistently no matter when a layer was created or which box gets toggled.
+        function setLayersVisible(layers, visible) {
+            layers.forEach(l => { try { l.setStyle({ stroke: visible, fill: visible }); } catch(e) {} });
+        }
+
+        function addMesoscaleDiscussion(center) {
+            mesoscaleDiscussion = L.marker([center.lat + 0.15, center.lon - 0.15], { icon: L.divIcon({ className: 'mesoscale-marker', html: '<div style="background: rgba(0,80,200,0.88); color: white; padding: 10px; border-radius: 8px; font-size: 11px; max-width: 230px; line-height: 1.4;">MESOSCALE DISCUSSION<br><br>SPC has issued a Mesoscale Discussion for this area.<br><br>Supercells capable of producing tornadoes are expected within this zone.</div>', iconSize: [230, 85] }) }).addTo(map);
+        }
+
+        function updateRiskLevel(level) { const el = document.getElementById('riskLevel'); el.textContent = level + ' Risk'; el.className = 'risk-level ' + level.toLowerCase(); }
+        function updateStats() {
+            document.getElementById('tornadoCount').textContent = tornadoes.length;
+            document.getElementById('maxEF').textContent = 'EF' + (tornadoes.length > 0 ? Math.max(...tornadoes.map(t => t.actualMaxEF)) : 0);
+            document.getElementById('totalPath').textContent = tornadoes.reduce((s, t) => s + t.pathLength, 0).toFixed(1);
+        }
+        function updateActiveTornadoes() { const active = tornadoes.filter(t => t.currentPos < 1).length; document.getElementById('activeTornadoes').textContent = active + ' (' + (active === 0 ? 'Track Complete' : 'Active') + ')'; }
+
+        function toggleLayers() {
+            if (!activeScenario) return;
+            const showWind = document.getElementById('showWindFields').checked;
+            const showDamage = document.getElementById('showDamage').checked;
+            const showHail = document.getElementById('showHail').checked;
+            const showMeso = document.getElementById('showMesoscale').checked;
+
+            setLayersVisible(windFields, showWind);
+            setLayersVisible(hailReports, showHail);
+            tornadoes.forEach(t => {
+                if (t.damageSwaths) setLayersVisible(t.damageSwaths, showDamage);
+                if (t.currentSwaths) setLayersVisible(t.currentSwaths, showDamage);
+            });
+
+            if (mesoscaleDiscussion) { map.removeLayer(mesoscaleDiscussion); mesoscaleDiscussion = null; }
+            if (showMeso && mesoCenter) addMesoscaleDiscussion(mesoCenter);
+        }
+
+        let areaSelectionHandler = null;
+        let areaSelectionFirstMarker = null;
+        function selectScenarioArea() {
+            // Guard against stacked listeners if the button is clicked again mid-selection
+            if (areaSelectionHandler) { map.off('click', areaSelectionHandler); areaSelectionHandler = null; }
+            if (areaSelectionFirstMarker) { try { map.removeLayer(areaSelectionFirstMarker); } catch(e) {} areaSelectionFirstMarker = null; }
+
+            alert('Click two points to define the mesoscale discussion zone.\nFirst click: Center\nSecond click: Edge');
+            let firstClick = null;
+
+            areaSelectionHandler = function(e) {
+                if (!firstClick) {
+                    firstClick = e.latlng;
+                    areaSelectionFirstMarker = L.circleMarker(firstClick, { radius: 5, color: '#0066ff', fillColor: '#0066ff', fillOpacity: 0.5 }).addTo(map);
+                    return;
+                }
+                map.off('click', areaSelectionHandler); areaSelectionHandler = null;
+                if (areaSelectionFirstMarker) { try { map.removeLayer(areaSelectionFirstMarker); } catch(err) {} areaSelectionFirstMarker = null; }
+
+                clearScenario(); activeScenario = true;
+                const dist = firstClick.distanceTo(e.latlng) / 111000; // was passing the raw click event instead of e.latlng, so this was always NaN
+                const center = { lat: firstClick.lat, lon: firstClick.lng };
+                const mesoPoints = []; for (let i = 0; i < 10; i++) { const angle = (i / 10) * 2 * Math.PI; mesoPoints.push([center.lat + dist * Math.cos(angle) * (0.85 + Math.random() * 0.3), center.lon + dist * Math.sin(angle) * (0.85 + Math.random() * 0.3)]); }
+                mesoPolygon = L.polygon(mesoPoints, { color: '#0066ff', weight: 2, dashArray: '6, 6', fillColor: '#0066ff', fillOpacity: 0.12 }).addTo(map); mesoCenter = center;
+                const riskPoints = []; const riskDist = dist * 2.5; for (let i = 0; i < 10; i++) { const angle = (i / 10) * 2 * Math.PI; riskPoints.push([center.lat + riskDist * Math.cos(angle) * (0.8 + Math.random() * 0.4), center.lon + riskDist * Math.sin(angle) * (0.8 + Math.random() * 0.4)]); }
+                riskPolygon = L.polygon(riskPoints, { color: '#ff0000', weight: 3, dashArray: '10, 10', fillColor: '#ff4444', fillOpacity: 0.08 }).addTo(map);
+                updateRiskLevel('Enhanced'); document.getElementById('statsPanel').style.display = 'block'; document.getElementById('legend').style.display = 'block';
+                document.getElementById('simRegion').textContent = 'Custom Area'; currentRegion = 'Custom Area';
+                map.fitBounds(riskPolygon.getBounds(), { padding: [50, 50] });
+                setTimeout(() => generateTornado('Enhanced'), 1000);
+            };
+            map.on('click', areaSelectionHandler);
+        }
+
+        function changeMapLayer() { const sel = document.getElementById('mapLayer').value; Object.values(mapLayers).forEach(l => { if (map.hasLayer(l)) map.removeLayer(l); }); mapLayers[sel].addTo(map); }
+        function toggleControls() { const controls = document.getElementById('controls'); const closeBtn = document.getElementById('closeBtn'); if (controls.style.display === 'none') { controls.style.display = 'block'; closeBtn.style.left = '360px'; closeBtn.textContent = '−'; } else { controls.style.display = 'none'; closeBtn.style.left = '10px'; closeBtn.textContent = '+'; } }
+        function returnToMainMenu() { if (confirm('Return to main menu? This will clear the current scenario.')) { clearScenario(); document.getElementById('statsPanel').style.display = 'none'; document.getElementById('legend').style.display = 'none'; document.getElementById('statsLog').style.display = 'none'; document.getElementById('riskLevel').textContent = 'Slight Risk'; document.getElementById('riskLevel').className = 'risk-level slight'; document.getElementById('activeTornadoes').textContent = '0 (Track Complete)'; map.setView([36.0, -95.0], 6); } }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
